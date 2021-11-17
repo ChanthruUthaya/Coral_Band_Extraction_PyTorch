@@ -150,52 +150,6 @@ class CoralDataset(Dataset):
         self.aug_dict = aug_dict
 
 
-        # for image, label in self.train_generator:
-        #     print("adding")
-        #     image, label = CoralDataset.adjust_data(image, label)
-        #     self.data.append((image,label))
-
-    def generator(self):
-        image_datagen = ImageDataGenerator(**self.aug_dict)
-        label_datagen = ImageDataGenerator(**self.aug_dict)
-
-        seed = np.random.randint(0, 100)
-
-    # The same seed argument is used when the image and label generators are
-    # created to ensure that the same transformations are applied to both.
-        image_generator = image_datagen.flow_from_directory(
-            self.dir,
-            classes=["image"],
-            class_mode=None,
-            color_mode="grayscale",
-            target_size=(256,256),
-            batch_size=2,
-            save_to_dir=None,
-            save_prefix="image",
-            seed=seed
-        )
-
-        label_generator = label_datagen.flow_from_directory(
-            self.dir,
-            classes=["label"],
-            class_mode=None,
-            color_mode="grayscale",
-            target_size=(256,256),
-            batch_size=2,
-            save_to_dir=None,
-            save_prefix="label",
-            seed=seed
-        )
-
-        # Zip the two generators into one.
-        train_generator = zip(image_generator, label_generator)
-
-        for image, label in train_generator:
-            image, label = CoralDataset.adjust_data(image, label)
-            image, label = torch.from_numpy(image), torch.from_numpy(label)
-            yield image.view(2,-1,256,256), label.squeeze()
-
-    
     def __len__(self):
         return len(self.ids)
     
