@@ -58,3 +58,24 @@ class CoralDataset(Dataset):
             'label': transforms.ToTensor()(label_0),
             'name': self.ids[i]
         }
+
+def save_skel(save_path_skel, save_path, image, i):
+
+        image *= 255
+        image = image.astype(np.uint8)
+        _, image_threh = cv.threshold(image, 0, 255, cv.THRESH_OTSU)
+
+        # Turn all 255s into 1s for the skeletonization.
+        image_threh[image_threh == 255] = 1
+
+        # Skeletonize the thresholded prediction and turn it back into
+        # a range of 0-255.
+        skel = morphology.skeletonize(image_threh)
+        skel = skel.astype(int) * 255
+
+    #  # output_label = img_as_ubyte(label_img)
+        #Output the skeletonized prediction.
+        print("Saving prediction")
+
+        cv.imwrite(os.path.join(save_path_skel, f"{i}_skeleton.png"), skel)
+        cv.imwrite(os.path.join(save_path, f"{i}_image.png"), image)
