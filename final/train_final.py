@@ -47,7 +47,7 @@ parser.add_argument("--resume-checkpoint", type=Path)
 parser.add_argument("--flip-range", type=float, default=0.5, help="flipping range +/- value")
 parser.add_argument("--brightness-range", type=float, default=0.1, help="range of shifts of brightness +/- value")
 parser.add_argument("--translation-range", type=float, default=0.2, help="translation +/- value")
-parser.add_argument("--shear_range", type=float, default=2, help="shearing range")
+parser.add_argument("--shear-range", type=float, default=2, help="shearing range")
 parser.add_argument("--angle", type=int, default=2, help="rotation angle +/- value")
 parser.add_argument("--scale", type=float, default=0.02, help="scaling value")
 
