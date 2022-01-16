@@ -175,4 +175,69 @@ class BinaryFocalLoss(nn.Module):
 
         return loss
 
+class HausdorfLoss(nn.Module):
+
+    def __init__(self, reduction="mean",gamma=1, theta=1.0, sigma=1.0):
+        super(HausdorfLoss, self).__init__()
+        self.eps = 1e-8
+        self.reduction = reduction
+        self.theta = theta
+        self.sigma = sigma
+        self.gamma =gamma
+
+    
+    def forward(self, input, target):
+
+        probs = torch.sigmoid(input)
+
+        pred_clone = probs.detach().cpu().numpy()
+        label_clone = target.detach().cpu().numpy()
+
+        weight_maps = []
+
+        for batch_ind in range(pred_clone.shape[0]):
+
+            image_boundaries, label_boundaries = get_boundaries(pred_clone[batch_ind], label_clone[batch_ind])
+
+            c_image_boundaries = (ctypes.c_int * len(image_boundaries))(*image_boundaries)
+            c_label_boundaries = (ctypes.c_int * len(label_boundaries))(*label_boundaries)
+            
+            C.one_value_euclidean.restype = ctypes.c_double
+
+            weight_map = np.ones((pred_clone.shape[1], pred_clone.shape[2]))
+
+            for i in range(0,len(label_boundaries),2):
+                x = ctypes.c_int(label_boundaries[i])
+                y = ctypes.c_int(label_boundaries[i+1])
+
+                distance = C.one_value_euclidean(x,y,c_image_boundaries, len(image_boundaries))
+
+                weight_map[label_boundaries[i]][label_boundaries[i+1]] += self.theta*math.exp(-distance/self.sigma)
+            
+            
+            for i in range(0,len(image_boundaries),2):
+                x = ctypes.c_int(image_boundaries[i])
+                y = ctypes.c_int(image_boundaries[i+1])
+
+                distance = C.one_value_euclidean(x,y,c_label_boundaries, len(c_image_boundaries))
+
+                weight_map[image_boundaries[i]][image_boundaries[i+1]] += self.theta*math.exp(-distance/self.sigma)
+
+            weight_maps.append(weight_map)
+        
+        weight_maps = torch.tensor(np.stack(weight_maps, axis=0)).to(DEVICE)
+
+        loss_tmp = weight_maps*(-torch.pow((1. - probs), self.gamma) * target * torch.log(probs + self.eps) -torch.pow(probs, self.gamma) * (1. - target) * torch.log(1. - probs + self.eps)) #first line when target is positive class, second line when negative class
+
+        loss_tmp = loss_tmp.squeeze(dim=1)
+
+        if self.reduction == 'none':
+            loss = loss_tmp
+        elif self.reduction == 'mean':
+            loss = torch.mean(loss_tmp)
+        elif self.reduction == 'sum':
+            loss = torch.sum(loss_tmp)
+        
+        return loss
+
 # self.alpha (1 - self.alpha) * 
