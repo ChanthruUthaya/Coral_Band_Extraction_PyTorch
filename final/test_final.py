@@ -7,7 +7,6 @@ from torch import nn, optim
 from torch.nn import functional as F
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader, Dataset
-from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms, datasets
 from multiprocessing import cpu_count
 from pathlib import Path
@@ -19,7 +18,6 @@ import skimage.io as io
 from skimage import img_as_ubyte, morphology
 from PIL import Image
 import random
-from tensorflow.python.keras import backend
 from glob import glob
 import cv2 as cv
 import time
@@ -38,7 +36,6 @@ parser.add_argument("--checkpoint", type=str, default = "checkpoint-24")
 parser.add_argument("-j", "--worker-count", default = cpu_count(), type=int, help="Number of worker processes used to load data")
 parser.add_argument("--data-dir", type=str, default="../../data/")
 parser.add_argument("--preds", type=str, default="predictions")
-parser.add_argument("--mode", type=str, default="test")
 parser.add_argument("--batch-size", type=int, default=1)
 
 args = parser.parse_args()
@@ -73,7 +70,7 @@ def test_main(args):
 
   transform = Transform(flips, brightness, affine)
 
-  test_data_dir = args.data_dir + args.mode
+  test_data_dir = args.data_dir + "test"
 
   test_data = CoralDataset(test_data_dir, transform, mode=1)
   test_loader = DataLoader(test_data, batch_size=1, shuffle=False, num_workers=args.worker_count, pin_memory=True)
