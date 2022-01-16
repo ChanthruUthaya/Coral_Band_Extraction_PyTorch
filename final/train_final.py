@@ -1,9 +1,9 @@
 import argparse
-from data import *
-from models import *
-from tools import *
-from transformClass import *
-from loss_functions import *
+from data_final import *
+from model_final import *
+from model_checkpoint_final import *
+from transformClass_final import *
+from loss_functions_final import *
 import os
 import torch
 import torch.backends.cudnn
@@ -11,7 +11,7 @@ from torch import nn, optim
 from torch.nn import functional as F
 from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader, random_split
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 from multiprocessing import cpu_count
 from pathlib import Path
@@ -27,19 +27,18 @@ parser.add_argument("--epochs", type=int, default=50, help="Number of epochs to 
 parser.add_argument("--lr", type=float, default=0.0001, help="Learning rate")
 parser.add_argument("--wd", type=float, default=0.00001, help="weight decay")
 parser.add_argument("--batch", type=int, default=2, help="Batch size")
-parser.add_argument("--dir", type=str, default="data", help="Data directory")
+parser.add_argument("--dir", type=str, default="../../data/", help="Data directory")
 parser.add_argument("-j", "--worker-count", default=cpu_count(), type=int, help="Number of worker processes used to load data.")
 
 
 parser.add_argument("--vals", type=int, default=1, help="The number of validation samples to test")
-parser.add_argument("--val-fq",type=int default=1, type=int, help="How frequently to test the model on the validation set in number of epochs")
+parser.add_argument("--val-fq",type=int, default=1, help="How frequently to test the model on the validation set in number of epochs")
 parser.add_argument("--summary-dir", type=str, default="summary", help="Summary directory")
 parser.add_argument("--log-fq", default=1, type=int, help="How frequently to save logs to tensorboard in number of steps")
-parser.add_argument("--print-fq", default=10, type=int, help="How frequently to print progress to the command line in number of steps")
-parser.add_argument("--tests", type=int, default=56, help="The number of tests to carry out once training is complete")
+parser.add_argument("--print-fq", default=1, type=int, help="How frequently to print progress to the command line in number of steps")
 
 ### CHECKPOINT ###
-parser.add_argument("--checkpoint-path", type=Path, default=Path("./scratch/checkpoint/checkpoint_transfer"))
+parser.add_argument("--checkpoint-path", type=Path, default=Path("../../checkpoint/checkpoint_folder"))
 parser.add_argument("--checkpoint-fq", type=int, default=1, help="Save a checkpoint every N epochs")
 parser.add_argument("--resume-checkpoint", type=Path)
 
@@ -52,7 +51,7 @@ parser.add_argument("--angle", type=int, default=2, help="rotation angle +/- val
 parser.add_argument("--scale", type=float, default=0.02, help="scaling value")
 
 #Focal loss args
-parser.add_argument("--alpha", type=int, default=0.1, help="alpha value used for focal loss")
+parser.add_argument("--alpha", type=int, default=0.5, help="alpha value used for focal loss")
 parser.add_argument("--gamma", type=float, default=1, help="gamma value used for focal loss")
 
 #UNET agrs
@@ -71,10 +70,10 @@ class Trainer:
         self, 
         model, 
         checkpoint,
+        start_epoch,
         criterion, 
         optimizer,
         device,
-        summary_writer,
         train_loader,
         val_loader,
     ):
@@ -83,11 +82,11 @@ class Trainer:
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.checkpoint = checkpoint
+        self.start_epoch = start_epoch
         self.criterion = criterion
         self.optimizer = optimizer
         self.step = 0
         self.losses = []
-        self.summary_writer = summary_writer
         self.valloss = None
     
     def train(self, args):
@@ -95,7 +94,7 @@ class Trainer:
 
         self.model.train()
         
-        for epoch in range(args.epochs):
+        for epoch in range(self.start_epoch, args.epochs):
             data_load_start_time = time.time()
 
             print("start epoch")
@@ -115,6 +114,7 @@ class Trainer:
                 loss = self.criterion(logits.squeeze(), labels.squeeze())
                 
                 loss.backward()
+
                 self.optimizer.step()
 
                 self.losses.append(loss.item())
@@ -123,15 +123,12 @@ class Trainer:
 
                 data_load_time = data_load_end_time - data_load_start_time
                 step_time = time.time() - data_load_end_time
-                if ((self.step) % args.log_fq) == 0:
-                    self.log_metrics(epoch, loss.item(), data_load_time, step_time)
+
                 if ((self.step) % args.print_fq) == 0:
                     self.print_metrics(epoch, stats.mean(self.losses), data_load_time, step_time)
                     self.losses.clear()
 
                 data_load_start_time = time.time()
-
-             #   self.summary_writer.add_scalar("epoch", epoch, self.step)
             
                 if (self.step % args.val_fq) == 0:
                     self.validate()
@@ -160,12 +157,6 @@ class Trainer:
 
         print(f"validation loss: {average_loss:.5f}")
 
-        self.summary_writer.add_scalars(
-            "loss",
-            {"test": average_loss},
-            self.step
-        )
-
     def print_metrics(self, epoch, loss, data_load_time, step_time):
         epoch_step = self.step % len(self.train_loader)
         print(
@@ -191,50 +182,22 @@ class Trainer:
                 "time/data", step_time, self.step
         )
 
-def get_summary_writer_log_dir(args: argparse.Namespace) -> str:
-    """Get a unique directory that hasn't been logged to before for use with a TB
-    SummaryWriter.
-
-    Args:
-        args: CLI Arguments
-
-    Returns:
-        Subdirectory of log_dir with unique subdirectory name to prevent multiple runs
-        from getting logged to the same TB log directory (which you can't easily
-        untangle in TB).
-    """
-    tb_log_dir_prefix = (
-          f"SENSOR_"
-          f"bs={args.batch}_" +
-          f"lr={args.lr}_" +
-          f"run_"
-      )
-    
-    print(tb_log_dir_prefix)
-    i = 0
-    while i < 1000:
-        tb_log_dir = Path(args.summary_dir + "/" + (tb_log_dir_prefix + str(i)))
-        if not tb_log_dir.exists():
-            return str(tb_log_dir)
-        i += 1
-    return str(tb_log_dir)
-
 def initialize_parameters(m):
     if isinstance(m, nn.Conv2d):
         torch.nn.init.xavier_uniform_(m.weight)
         torch.nn.init.zeros_(m.bias)
-                
 
 def main(args):
 
     dir_train = args.dir + "/train/"
-    dir_val = args.dir + "/validation/"
+    dir_val = args.dir + "/val/"
     flip_range = args.flip_range
     brightness_range = args.brightness_range
     translation_range = args.translation_range
     shear_range = args.shear_range
     scale = args.scale
     angle = args.angle
+    start_epoch = 0
 
  
     flips = Flip(flip_range, flip_range)
@@ -243,15 +206,11 @@ def main(args):
 
     transform = Transform(flips, brightness, affine)
     
-    train_dataset= CoralDatasetTransfer(dir_train,transform, 0)
-    val_dataset = CoralDatasetTransfer(dir_val,transform,1)
+    train_dataset= CoralDataset(dir_train,transform, 0)
+    val_dataset = CoralDataset(dir_val,transform,1)
     
     train_loader = DataLoader(train_dataset, batch_size=args.batch ,shuffle=True,pin_memory=True ,num_workers=args.worker_count)
     validation_loader = DataLoader(val_dataset, batch_size=1 ,shuffle=False,pin_memory=True ,num_workers=args.worker_count)
-
-    log_dir = get_summary_writer_log_dir(args)
-    print(f"Writing logs to {log_dir}")
-    summary_writer = SummaryWriter(log_dir, flush_secs=5)
 
     model = UNetAblated(args.n_channels, args.n_classes)
     ### CHECKPOINT - load parameters, args, loss ###
@@ -264,20 +223,22 @@ def main(args):
         print(f"Testing model {args.resume_checkpoint} that achieved {checkpoint['loss']} loss")
 
         model.load_state_dict(checkpoint['model'])
+        start_epoch = int(args.resume_checkpoint.split("-")[1])+1
     else:
         model.apply(initialize_parameters)
+        
 
+    print(f"starting at epoch: {start_epoch}")
     model_checkpoint = ModelCheckpoint(args)
 
     optimizer = optim.Adam(model.parameters(), lr = args.lr)
     criterion = FocalLoss(gamma=args.gamma, alpha=args.alpha)
-    trainer = Trainer(model, model_checkpoint, criterion,optimizer, DEVICE, summary_writer, train_loader=train_loader, val_loader=validation_loader)
+    trainer = Trainer(model, model_checkpoint, start_epoch, criterion, optimizer, DEVICE, train_loader=train_loader, val_loader=validation_loader)
     trainer.train(args)
 
 
     print("done training")
 
-    summary_writer.close()
     
 if __name__ == '__main__':
     main(parser.parse_args())

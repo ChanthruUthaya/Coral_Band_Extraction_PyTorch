@@ -40,15 +40,10 @@ class AdjustBrightness:
 
     def __call__(self, image, label):
         image = np.expand_dims(np.array(image).astype(np.float32), axis=2)
-        #image = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
-        #print(np.max(image))
-       # print(image.shape)
-       # image = cv2.convertScaleAbs(np.array(image).astype(np.uint16))
-       # val = random.uniform(self.l,self.r)
+
         image = tf.keras.preprocessing.image.random_brightness(image, self.range)
         image = image.squeeze()
-        #print(np.max(image))
-        #image = np.clip(image*val, 0.0, 255.0)
+   
         return image, np.array(label).astype(np.float32)
 
 class Affine:
